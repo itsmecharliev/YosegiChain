@@ -2,7 +2,7 @@
 A minimal peer-to-peer blockchain implemented in C++17.
 This program is designed to demonstrate cross-host block propagation and chain synchronization over a real network.
 
-The name is based on yosegi-zaiku, a Japanese mosaic woodwork technique developed in Hakone, Japan during the Edo period. The technique utilzes the natural colors of various trees to create complex patterns.
+The name is based on yosegi-zaiku, a Japanese mosaic woodwork technique developed in Hakone, Japan during the Edo period. The technique utilizes the natural colors of various trees to create complex patterns.
 
 # How to compile and run:
 This program is currently primarily supporting Linux only.
