@@ -228,7 +228,7 @@ void P2PServer::ProcessFrame(int fd, const string& frame) {
         auto snapshot = Chain.Snapshot();
 
         // silence duplicate rejection noise
-        if (block.GetIndex() <= snapshot.back.GetIndex()) break;
+        if (block.GetIndex() <= snapshot.back().GetIndex()) break;
 
         cout << "p2p accepted block " << block.GetIndex() << endl;
         cout << "chain now: " << snapshot.size() << " blocks, tip "
