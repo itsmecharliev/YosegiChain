@@ -54,8 +54,9 @@ int main(int argc, char** argv) {
     Block tip = chain.Snapshot().back();
     p2p.BroadcastNewBlock(tip);
 
-    cout << "[node] mined block " << nextIndex << " ("
-         << tip.GetHash().substr(0, 16) << "...)" << endl;
+    cout << "[node] mined block " << nextIndex << endl;
+    cout << "this Hash: " << tip.GetHash().substr(0, 16) << "..." << endl;
+    cout << "prevHash:  " << tip.prevHash.substr(0, 16) << "..." << endl;
     nextIndex++;
   }
 
