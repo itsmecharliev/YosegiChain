@@ -2,8 +2,20 @@
 
 using namespace std;
 
+namespace {
+  // anonymous namespace to protect fixed genesis
+  Block MakeGenesis() {
+    Block genesis(0, "Genesis Block");
+    genesis.SetTime(1787529600); // First day of capstone class
+    genesis.SetNonce(0);
+    genesis.prevHash = "";
+    genesis.SetHash(genesis.CalculateHash());
+    return genesis;
+  }
+}
+
 Blockchain::Blockchain() {
-  Chain.push_back(Block(0, "Genesis Block"));
+  Chain.push_back(MakeGenesis());
   Difficulty = 3;   // 3 for test, 5-6 for demo
 }
 

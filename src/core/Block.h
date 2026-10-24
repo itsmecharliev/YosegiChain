@@ -12,7 +12,7 @@ class Block {
     Block() = default;
     Block(uint32_t indexIn, const std::string &dataIn);  // Constructor
 
-    std::string prevHash;        // Store previous block's hash
+    std::string prevHash;  // Store previous block's hash
 
     void MineBlock(uint32_t difficulty);  // Find valid Nonce and calculating Hash
     std::string CalculateHash() const;    // Calculate Hash
@@ -25,9 +25,9 @@ class Block {
     std::string GetHash()  const { return Hash; }
 
     // Setters
-    void SetIndex(uint32_t i)      { Index = i; }
-    void SetNonce(int64_t n)       { Nonce = n; }
-    void SetTime(time_t t)         { Time = t; }
+    void SetIndex(uint32_t i)          { Index = i; }
+    void SetNonce(int64_t n)           { Nonce = n; }
+    void SetTime(time_t t)             { Time = t; }
     void SetData(const std::string& d) { Data = d; }
     void SetHash(const std::string& h) { Hash = h; }
 
