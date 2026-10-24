@@ -16,13 +16,12 @@ namespace {
 
 Blockchain::Blockchain() {
   Chain.push_back(MakeGenesis());
-  Difficulty = 3;   // 3 for test, 5-6 for demo
 }
 
 void Blockchain::AddBlock(Block newBlock) {
   std::lock_guard<std::mutex> lock(ChainMutex);
   newBlock.prevHash = GetLastBlock().GetHash();
-  newBlock.MineBlock(Difficulty);
+  newBlock.MineBlock(DIFFICULTY);
   Chain.push_back(newBlock);
 }
 
