@@ -22,7 +22,9 @@ int main(int argc, char** argv) {
   string peerIp = argv[2];
   uint16_t peerPort = static_cast<uint16_t>(stoul(argv[3]));
 
-  Blockchain chain;
+  std::string chainPath = "chain_" + std::to_string(myPort) + ".ndjson";
+  Blockchain chain(chainPath);
+
   P2PServer p2p(chain, myPort);
   p2p.Start();
 

@@ -1,5 +1,6 @@
 #include "ChainStore.h"
 
+#include <cctype>
 #include <cstdio>
 #include <fstream>
 #include <sstream>
@@ -93,6 +94,62 @@ namespace chainstore {
       return out;
     } // end of JsonUnescape
 
+    /* find key's value in json object line and return substring */
+    std::string NextFieldValue(const std::string& line, size_t& pos, const std::string& key) {
+      // obtain key
+      const std::string needle = "\"" + key + "\":";
+
+      // address missing field
+      size_t k = line.find(needle, pos);
+      if (k == std::string::npos) { throw std::runtime_error("missing field \"" + key + "\""); }
+
+      size_t v = k + needle.size();
+
+      // string val: scan to closing quotation
+      if (v < line.size() && line[v] == '"') {
+        size_t start = ++v; // start after opening quotation
+        while (v < line.size()) {
+          if (line[v] == '\\') { v += 2; continue; } // count 2, one for \ and one for char
+          if (line[v] == '"') break; // found closing quotation
+
+          ++v; // traverse
+        }
+
+        // case no closing quotation is found
+        if (v >= line.size()) { throw std::runtime_error("unterminated string for field \"" + key + "\""); }
+
+        // store key successfully
+        std::string raw = line.substr(start, v - start);
+        pos = v + 1; // reposition pos past closing quotation
+        return raw; // caller decides whether to unescape
+      }
+      // num val: scan to comma or '}'
+      else {
+        size_t  start = v;
+        while (v < line.size() && line[v] != ',' && line[v] != '}') ++v;
+        std::string raw = line.substr(start, v - start);
+        pos = v;
+
+        return raw; // caller parses as int
+      }
+    } // end of NextFieldValue
+
+    Block ParseBlockLine(const std::string& line) {
+      if (line.empty() || line[0] != '{') { throw std::runtime_error("line does not start with '{'"); }
+
+      size_t pos = 0;
+      Block b;
+
+      b.SetIndex(static_cast<uint32_t>(std::stoul(NextFieldValue(line, pos, "index"))));
+      b.SetTime(static_cast<time_t>(std::stol(NextFieldValue(line, pos, "time"))));
+      b.SetNonce(std::stoll(NextFieldValue(line, pos, "nonce")));
+      b.prevHash = NextFieldValue(line, pos, "prevHash"); // hex, no escapes
+      b.SetData(JsonUnescape(NextFieldValue(line, pos, "data")));
+      b.SetHash(NextFieldValue(line, pos, "hash")); // hex, no escapes
+
+      return b;
+    } // end of ParseBlockLine
+
     std::string BlockToJsonLine(const Block& b) {
       std::ostringstream oss;
       oss << "{\"index\":" << b.GetIndex()
@@ -103,14 +160,43 @@ namespace chainstore {
           << ",\"hash\":\"" << JsonEscape(b.GetHash()) << "\"}";
 
       return oss.str();
-    }
+    } // end of BlockToJsonLine
 
   } // end of anonynouse helper namespace
 
   std::vector<Block> LoadFromFile(const std::string& path) {
-    (void)path;
-    return {};
-  }
+    std::ifstream in(path);
+    if (!in) {
+      // LEAVING EMPTY FOR NOW
+      // Test harness ndjson first, then come back and test bad files
+
+      return {};
+    }
+
+    std::vector<Block> chain;
+    std::string line;
+    size_t lineNum = 0;
+
+    // traverse lines
+    while (std::getline(in, line)) {
+      ++lineNum;
+
+      // deal with blank lines
+      if (line.empty()) { continue; }
+
+      try {
+        chain.push_back(ParseBlockLine(line));
+      }
+      catch (const std::exception& e) {
+        throw std::runtime_error("LoadFromFile: " + path + ":" + std::to_string(lineNum) + ": " + e.what());
+      }
+    }
+
+    // bad file path
+    if (in.bad()) { throw std::runtime_error("LoadFromFile: I/O error reading " + path); }
+
+    return chain;
+  } // end of LoadFromFile
 
   void SaveToFile(const std::string& path, const std::vector<Block>& chain) {
     const std::string tmpPath = path + ".tmp";

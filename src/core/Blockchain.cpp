@@ -1,4 +1,8 @@
 #include "Blockchain.h"
+#include "ChainStore.h"
+
+#include <cstdlib>
+#include <iostream>
 
 using namespace std;
 
@@ -14,8 +18,35 @@ namespace {
   }
 }
 
+/*
 Blockchain::Blockchain() {
   Chain.push_back(MakeGenesis());
+}
+*/
+Blockchain::Blockchain(const std::string& chainFilePath) : ChainFilePath(chainFilePath) {
+  // try loading chain from file first
+  try {
+    Chain = chainstore::LoadFromFile(ChainFilePath);
+  }
+  catch (const std::exception& e) {
+    std::cerr << "fatal: cannot load chain file " << ChainFilePath
+              << "': " << e.what() << "\n";
+    std::exit(1);
+  }
+
+  // create chain AND store
+  if (Chain.empty()) {
+    Chain.push_back(MakeGenesis());
+
+    try {
+      chainstore::SaveToFile(ChainFilePath, Chain);
+    }
+    catch (const std::exception& e) {
+      std::cerr << "fatal: cannot save chain file " << ChainFilePath
+                << "': " << e.what() << "\n";
+      std::exit(1);
+    }
+  }
 }
 
 void Blockchain::AddBlock(Block newBlock) {
@@ -23,6 +54,7 @@ void Blockchain::AddBlock(Block newBlock) {
   newBlock.prevHash = GetLastBlock().GetHash();
   newBlock.MineBlock(DIFFICULTY);
   Chain.push_back(newBlock);
+  PersistLocked();
 }
 
 std::vector<Block> Blockchain::Snapshot() const {
@@ -45,9 +77,19 @@ bool Blockchain::TryAddExternalBlock(const Block& block) {
     if (block.CalculateHash() != block.GetHash()) return false;
 
     Chain.push_back(block);
+    PersistLocked();
     return true;
 }
 
 Block Blockchain::GetLastBlock() const {
   return Chain.back();
+}
+
+void Blockchain::PersistLocked() {
+  try {
+    chainstore::SaveToFile(ChainFilePath, Chain);
+  }
+  catch (const std::exception& e) {
+    std::cerr << "warning: failed to persist chain: " << e.what() << "\n";
+  }
 }
