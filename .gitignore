@@ -1,5 +1,7 @@
 # Build artifacts
 *.o
 *.d
+*.ndjson
 src/TestChain
 src/tests
+src/test_store
