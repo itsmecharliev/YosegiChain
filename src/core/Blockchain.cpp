@@ -18,11 +18,6 @@ namespace {
   }
 }
 
-/*
-Blockchain::Blockchain() {
-  Chain.push_back(MakeGenesis());
-}
-*/
 Blockchain::Blockchain(const std::string& chainFilePath) : ChainFilePath(chainFilePath) {
   // try loading chain from file first
   try {

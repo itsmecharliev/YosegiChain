@@ -4,7 +4,7 @@ This program is designed to demonstrate cross-host block propagation and chain s
 
 The name is based on yosegi-zaiku, a Japanese mosaic woodwork technique developed in Hakone, Japan during the Edo period. The technique utilizes the natural colors of various trees to create complex patterns.
 
-# How to compile and run:
+## How to compile and run:
 This program is currently primarily supporting Linux only.
 ### Dependencies needed:
 g++, make
@@ -18,15 +18,21 @@ Run ```make```
 ```g++ -std=c++17 -pthread -O2 -Wall -Wextra main.cpp core/*.cpp cryptography/*.cpp network/*.cpp -o TestChain```
 
 ### How to Run:
-./TestChain <my_p2p_port> <peer_ip> <peer_p2p_port>
+```
+./TestChain <your_ip> <your_port> <peer_ip> <peer_port>
+```
 
 ### Laptop A
+```
 ./TestChain 6001 192.168.1.11 6001
+```
 
 ### Laptop B
+```
 ./TestChain 6001 192.168.1.10 6001
+```
 
-# References
+## References
 1. The initial creation of this code started off as a tutorial by Dave Nash
 in his [BUILD A BLOCKCHAIN WITH C++](https://davenash.com/2017/10/build-a-blockchain-with-c/) tutorial.
 

@@ -12,7 +12,6 @@ class Blockchain {
   public:
     static constexpr uint32_t DIFFICULTY = 3; // Desired Blockchain difficulty
 
-    // Blockchain();
     explicit Blockchain(const std::string& chainFilePath);
     void AddBlock(Block newBlock);  // Adding new Block to Blockchain
     bool TryAddExternalBlock(const Block& block);
