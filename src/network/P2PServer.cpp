@@ -48,11 +48,11 @@ void P2PServer::Stop() {
 
   // shutdown peer connections
   lock_guard<mutex> lock(PeersMutex);
-  for (int fd : PeerFds) {
+  for (const auto& [fd, addr] : Peers) {
     shutdown(fd, SHUT_RDWR);
     close(fd);
   }
-  PeerFds.clear();
+  Peers.clear();
 }
 
 void P2PServer::ListenLoop() {
@@ -111,7 +111,7 @@ void P2PServer::ListenLoop() {
     }
 
     // register connection
-    AddPeer(fd);
+    AddPeer(fd, inet_ntoa(peerAddr.sin_addr));
     cout << "p2p inbound peer from: " << inet_ntoa(peerAddr.sin_addr) << endl;
 
     // bidirectional sync
@@ -145,7 +145,7 @@ bool P2PServer::DialPeer(const string& ip, uint16_t port) {
   }
 
   // register connection
-  AddPeer(fd);
+  AddPeer(fd, ip + ":" + to_string(port));
   cout << "p2p outbound peer " << ip << ":" << port << "\n";
 
   // sync chain on connect
@@ -175,21 +175,28 @@ void P2PServer::SendFrame(int fd, const string& frame) {
 void P2PServer::BroadcastFrame(const string& frame) {
   lock_guard<mutex> lock(PeersMutex);
 
-  for (int fd : PeerFds) {
+  for (const auto& [fd, addr] : Peers) {
     send(fd, frame.data(), frame.size(), 0);
   }
 }
 
 // register new connection
-void P2PServer::AddPeer(int fd) {
-    lock_guard<mutex> lock(PeersMutex);
-    PeerFds.push_back(fd);
+void P2PServer::AddPeer(int fd, const string& addr) {
+  lock_guard<mutex> lock(PeersMutex);
+  Peers[fd] = addr;
 }
 
 // drop finished connection
 void P2PServer::RemovePeer(int fd) {
     lock_guard<mutex> lock(PeersMutex);
-    PeerFds.erase(remove(PeerFds.begin(), PeerFds.end(), fd), PeerFds.end());
+    Peers.erase(fd);
+}
+
+string P2PServer::PeerName(int fd) {
+  std::lock_guard<mutex> lock(PeersMutex);
+  auto it = Peers.find(fd);
+  if (it == Peers.end()) return "fd " + to_string(fd);
+  return it->second;
 }
 
 void P2PServer::HandleConnection(int fd) {
@@ -216,12 +223,13 @@ void P2PServer::HandleConnection(int fd) {
   }
 
   // close connection
+  string name = PeerName(fd);
   RemovePeer(fd);
   close(fd);
-  cout << "p2p peer disconnected (fd " << fd << ")" << endl;
+  cout << "p2p peer disconnected (" << name << ")" << endl;
 }
 
-void P2PServer::ProcessFrame(int fd, const string& frame, std::vector<Block>& pendingBlocks) {
+void P2PServer::ProcessFrame(int fd, const string& frame, vector<Block>& pendingBlocks) {
   try {
     // exit on empty
     if (frame.empty()) return;
@@ -269,7 +277,7 @@ void P2PServer::ProcessFrame(int fd, const string& frame, std::vector<Block>& pe
 
         auto result = Blockchain::ValidateChain(peerChain);
         if (!result.valid) {
-          cerr << "p2p rejected chain from fd " << fd
+          cerr << "p2p rejected chain from " << PeerName(fd)
                << ": block #" << result.failedIndex
                << " failed: " << result.reason << "\n";
           break;
@@ -279,7 +287,7 @@ void P2PServer::ProcessFrame(int fd, const string& frame, std::vector<Block>& pe
         auto local = Chain.Snapshot();
         if (peerChain.size() <= local.size()) { break; }
         if (Chain.ReplaceChain(std::move(peerChain))) {
-          cout << "p2p adopted chain from fd " << fd
+          cout << "p2p adopted chain from " << PeerName(fd)
                << ": now " << Chain.Snapshot().size() << " blocks\n";
         }
         break;
@@ -291,7 +299,7 @@ void P2PServer::ProcessFrame(int fd, const string& frame, std::vector<Block>& pe
     }
   }
   catch (const std::exception& e) {
-    cerr << "p2p dropped malformed frame from fd " << fd
+    cerr << "p2p dropped malformed frame from " <<PeerName(fd)
         << ": " << e.what() << "\n";
   }
 }

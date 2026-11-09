@@ -6,6 +6,7 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include <map>  // mapping fd -> ip:port
 #include "../core/Block.h"
 #include "../core/Blockchain.h"
 
@@ -28,15 +29,16 @@ class P2PServer {
     uint16_t ListenPort;
     int ListenFd;
     std::atomic<bool> Running;
-    std::vector<int> PeerFds;
+    std::map<int, std::string> Peers;
     std::mutex PeersMutex;
 
     void ListenLoop();
     void HandleConnection(int fd);
     void SendFrame(int fd, const std::string& frame);
     void BroadcastFrame(const std::string& frame);
-    void AddPeer(int fd);
+    void AddPeer(int fd, const std::string& addr);
     void RemovePeer(int fd);
+    std::string PeerName(int fd);
     void ProcessFrame(int fd, const std::string& frame, std::vector<Block>& pendingBlocks);
 };
 
