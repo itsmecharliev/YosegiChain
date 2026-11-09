@@ -114,6 +114,9 @@ void P2PServer::ListenLoop() {
     AddPeer(fd);
     cout << "p2p inbound peer from: " << inet_ntoa(peerAddr.sin_addr) << endl;
 
+    // bidirectional sync
+    SendFrame(fd, MakeFrame(MessageType::GetBlocks, ""));
+
     // hand off detached worker
     thread([this, fd] { HandleConnection(fd); }).detach();
   }
@@ -192,6 +195,7 @@ void P2PServer::RemovePeer(int fd) {
 void P2PServer::HandleConnection(int fd) {
   string buffer;
   char chunk[4096];
+  vector<Block> pendingBlocks; // accumulated Block frames for curr connection
 
   // read loop: runs until peer disconnects or the server stops
   while (Running.load()) {
@@ -205,7 +209,9 @@ void P2PServer::HandleConnection(int fd) {
     while ((pos = buffer.find('\n')) != string::npos) { // find delimiter and store in pos
       string frame = buffer.substr(0, pos); // extracted frame is data up to delimiter
       buffer.erase(0, pos + 1); // clear buffer
-      if (!frame.empty()) ProcessFrame(fd, frame);  // skip blanks ie double newline
+ 
+      // skip blanks ie double newline
+      if (!frame.empty()) ProcessFrame(fd, frame, pendingBlocks);
     }
   }
 
@@ -215,51 +221,77 @@ void P2PServer::HandleConnection(int fd) {
   cout << "p2p peer disconnected (fd " << fd << ")" << endl;
 }
 
-void P2PServer::ProcessFrame(int fd, const string& frame) {
-  // Payload layout
-  MessageType type = static_cast<MessageType>(frame[0]);
-  string payload = frame.substr(1);
+void P2PServer::ProcessFrame(int fd, const string& frame, std::vector<Block>& pendingBlocks) {
+  try {
+    // exit on empty
+    if (frame.empty()) return;
 
-  switch (type) {
-    // peer push block to us
-    case MessageType::NewBlock: {
-      Block block = DeserializeBlock(payload);
-      if (Chain.TryAddExternalBlock(block)) {
+    // Payload layout
+    MessageType type = static_cast<MessageType>(frame[0]);
+    string payload = frame.substr(1);
+
+    switch (type) {
+      // peer push block to us
+      case MessageType::NewBlock: {
+        Block block = DeserializeBlock(payload);
+        if (Chain.TryAddExternalBlock(block)) {
+          auto snapshot = Chain.Snapshot();
+
+          // silence duplicate rejection noise
+          if (block.GetIndex() <= snapshot.back().GetIndex()) break;
+
+          cout << "p2p accepted block " << block.GetIndex() << endl;
+          cout << "chain now: " << snapshot.size() << " blocks, tip "
+              << snapshot.back().GetHash().substr(0, 16) << "..." << endl;
+        }
+
+        break;
+      }
+      // peer request our chain
+      case MessageType::GetBlocks: {
         auto snapshot = Chain.Snapshot();
-
-        // silence duplicate rejection noise
-        if (block.GetIndex() <= snapshot.back().GetIndex()) break;
-
-        cout << "p2p accepted block " << block.GetIndex() << endl;
-        cout << "chain now: " << snapshot.size() << " blocks, tip "
-             << snapshot.back().GetHash().substr(0, 16) << "..." << endl;
+        for (const auto& block : snapshot) {
+          SendFrame(fd, MakeFrame(MessageType::Block, SerializeBlock(block)));
+        }
+        SendFrame(fd, MakeFrame(MessageType::BlocksEnd, ""));
+        break;
       }
-      /* NEED TO FIGURE OUT HOW TO DISPLAY NON-DUPLICATE FRAME REJECTION */
-      //else cout << "p2p rejected block " << block.GetIndex() << endl;
+      // peer send us one block in response to our request
+      case MessageType::Block: {
+        Block block = DeserializeBlock(payload);
+        pendingBlocks.push_back(block);
+        break;
+      }
+      // peer finished sending chain. decide whether to adopt
+      case MessageType::BlocksEnd: {
+        auto peerChain = std::move(pendingBlocks);
+        pendingBlocks.clear();
 
-      break;
-    }
-    // peer request our chain
-    case MessageType::GetBlocks: {
-      auto snapshot = Chain.Snapshot();
-      for (const auto& block : snapshot) {
-        string frame = MakeFrame(MessageType::Block, SerializeBlock(block));
-        SendFrame(fd, frame);
+        auto result = Blockchain::ValidateChain(peerChain);
+        if (!result.valid) {
+          cerr << "p2p rejected chain from fd " << fd
+               << ": block #" << result.failedIndex
+               << " failed: " << result.reason << "\n";
+          break;
+        }
+
+        // placeholder to deal with forks
+        auto local = Chain.Snapshot();
+        if (peerChain.size() <= local.size()) { break; }
+        if (Chain.ReplaceChain(std::move(peerChain))) {
+          cout << "p2p adopted chain from fd " << fd
+               << ": now " << Chain.Snapshot().size() << " blocks\n";
+        }
+        break;
       }
-      break;
+      // unknown message type byte
+      default:
+        cerr << "p2p unknown message type byte: " << frame[0] << endl;
+        break;
     }
-    // peer send us one block in response to our request
-    case MessageType::Block: {
-      Block block = DeserializeBlock(payload);
-      if (Chain.TryAddExternalBlock(block)) {
-        cout << "p2p synced block " << block.GetIndex() << " from peer" << endl;
-      }
-      break;
-    }
-    // unknown message type byte
-    default:
-      cerr << "p2p unknown message type byte: " << frame[0] << endl;
-      break;
   }
-
+  catch (const std::exception& e) {
+    cerr << "p2p dropped malformed frame from fd " << fd
+        << ": " << e.what() << "\n";
+  }
 }

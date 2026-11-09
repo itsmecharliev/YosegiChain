@@ -37,7 +37,7 @@ class P2PServer {
     void BroadcastFrame(const std::string& frame);
     void AddPeer(int fd);
     void RemovePeer(int fd);
-    void ProcessFrame(int fd, const std::string& frame);
+    void ProcessFrame(int fd, const std::string& frame, std::vector<Block>& pendingBlocks);
 };
 
 #endif

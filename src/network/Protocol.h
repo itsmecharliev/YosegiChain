@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <sstream>
+#include <stdexcept>
 #include "../core/Block.h"
 
 /*
@@ -19,11 +20,13 @@
  * 'G' - an empty payload -> Request peer's full blockchain.
  * 'B' - a block payload -> One frame per block, sent in response to GetBlocks.
  * 'N' - a block payload -> Announces appended block and append block if valid.
+ * 'E' - an empty payload -> Terminate a block stream
  */
 enum class MessageType : uint8_t {
   GetBlocks = 'G',
   Block = 'B',
-  NewBlock = 'N'
+  NewBlock = 'N',
+  BlocksEnd = 'E'
 };
 
 /*
@@ -53,25 +56,64 @@ inline Block DeserializeBlock(const std::string& payload) {
   std::string token;
   Block block;
 
-  // Covert these 3 as end data type is not a string
-  std::getline(iss, token, '|');
-  block.SetIndex(static_cast<uint32_t>(std::stoul(token)));
+  // capture and return token
+  auto nextField = [&](const char* name) -> std::string {
+    // throw if ending early
+    if (!std::getline(iss, token, '|')) {
+      throw std::runtime_error(std::string("DeserializeBlock: missing field'") + name + "'");
+    }
+    return token;
+  };
 
-  std::getline(iss, token, '|');
-  block.SetTime(static_cast<time_t>(std::stol(token)));
+  // parse unsigned int
+  auto parseU64 = [](const std::string& s, const char* name) -> uint64_t {
+    try {
+      size_t pos = 0;
+      uint64_t v = std::stoull(s, &pos);
+      // stop too early
+      if (pos != s.size()) {
+        throw std::runtime_error(std::string("DeserializeBlock: ") + name + " has trailng characters: '" + s + "'");
+      }
+      return v;
+    }
+    catch (const std::exception& e) {
+      // throw again to avoid double wrap
+      if (std::string(e.what()).find("DeserializeBlock") != std::string::npos) {
+        throw;
+      }
+      // wrap for error detail
+      throw std::runtime_error(std::string("DeserializeBlock: ") + name + " is not a number: '" + s + "'");
+    }
+  };
 
-  std::getline(iss, token, '|');
-  block.SetNonce(std::stoll(token));
+  // parse int
+  auto parseInt64 = [](const std::string& s, const char* name) -> int64_t {
+    try {
+      size_t pos = 0;
+      int64_t v = std::stoll(s, &pos);
+      // stop too early
+      if (pos != s.size()) {
+        throw std::runtime_error(std::string("DeserializeBlock: ") + name + " has trailing characters: '" + s + "'");
+      }
+      return v;
+    }
+    catch (const std::exception& e) {
+      // throw again to avoid double wrap
+      if (std::string(e.what()).find("DeserializeBlock") != std::string::npos) {
+        throw;
+      }
+      // wrap for error detail
+      throw std::runtime_error(std::string("DeserializeBlock: ") + name + " is not a number: '" + s + "'");
+    }
+  };
 
-  // No need to convert because end result is a string
-  std::getline(iss, token, '|');
-  block.prevHash = token;
-
-  std::getline(iss, token, '|');
-  block.SetData(token);
-
-  std::getline(iss, token, '|');
-  block.SetHash(token);
+  // read fields in same order as SerializeBlock
+  block.SetIndex(static_cast<uint32_t>(parseU64(nextField("index"), "index")));
+  block.SetTime(static_cast<time_t>(parseInt64(nextField("time"), "time")));
+  block.SetNonce(parseInt64(nextField("nonce"), "nonce"));
+  block.prevHash = nextField("prevHash");
+  block.SetData(nextField("data"));
+  block.SetHash(nextField("hash"));
 
   return block;
 }

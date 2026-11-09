@@ -18,6 +18,12 @@ namespace {
   }
 }
 
+// cache genesis so chain validation does not have to recalcuate
+const Block& trueGenesis() {
+  static const Block g = MakeGenesis();
+  return g;
+}
+
 Blockchain::Blockchain(const std::string& chainFilePath) : ChainFilePath(chainFilePath) {
   // try loading chain from file first
   try {
@@ -87,4 +93,50 @@ void Blockchain::PersistLocked() {
   catch (const std::exception& e) {
     std::cerr << "warning: failed to persist chain: " << e.what() << "\n";
   }
+}
+
+ValidateResult Blockchain::ValidateChain(const std::vector<Block>& chain) {
+  if (chain.empty()) {
+    return { false, 0, "empty chain" };
+  }
+  if (chain[0].GetHash() != trueGenesis().GetHash()) {
+    return {false, 0, "genesis mismatch"};
+  }
+
+  for (size_t i = 1; i < chain.size(); ++i) {
+    const Block& cur = chain[i];
+    const Block& prev = chain[i-1];
+
+    // check duplicate or out of order
+    if (cur.GetIndex() != prev.GetIndex() + 1) {
+      return {false, i, "index gap"};
+    }
+
+    // previous block mismatch
+    if (cur.prevHash != prev.GetHash()) {
+      return {false, i, "prevHash mismatch"};
+    }
+
+    // current mismatch
+    if (cur.CalculateHash() != cur.GetHash()) {
+      return {false, i, "hash mismatch"};
+    }
+
+    // difficulty mismatch
+    if (cur.GetHash().substr(0, DIFFICULTY) != std::string(DIFFICULTY, '0')) {
+      return {false, i, "insufficient PoW"};
+    }
+  }
+
+  return {true, 0, ""};
+}
+
+bool Blockchain::ReplaceChain(std::vector<Block> newChain) {
+  if (newChain.empty()) return false;
+
+  std::lock_guard<std::mutex> lock(ChainMutex);
+  Chain = std::move(newChain);
+  PersistLocked();
+
+  return true;
 }

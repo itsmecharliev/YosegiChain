@@ -8,6 +8,13 @@
 
 #include "Block.h"
 
+// chain validation and tamper detection
+struct ValidateResult {
+  bool valid = true;
+  size_t failedIndex = 0;
+  std::string reason;
+};
+
 class Blockchain {
   public:
     static constexpr uint32_t DIFFICULTY = 3; // Desired Blockchain difficulty
@@ -16,6 +23,9 @@ class Blockchain {
     void AddBlock(Block newBlock);  // Adding new Block to Blockchain
     bool TryAddExternalBlock(const Block& block);
     std::vector<Block> Snapshot() const;
+
+    static ValidateResult ValidateChain(const std::vector<Block>& chain);
+    bool ReplaceChain(std::vector<Block> newChain);
 
   private:
     std::string ChainFilePath;
