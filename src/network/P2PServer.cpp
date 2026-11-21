@@ -50,9 +50,7 @@ void P2PServer::Stop() {
   lock_guard<mutex> lock(PeersMutex);
   for (const auto& [fd, addr] : Peers) {
     shutdown(fd, SHUT_RDWR);
-    close(fd);
   }
-  Peers.clear();
 }
 
 void P2PServer::ListenLoop() {
@@ -275,6 +273,7 @@ void P2PServer::ProcessFrame(int fd, const string& frame, vector<Block>& pending
         auto peerChain = std::move(pendingBlocks);
         pendingBlocks.clear();
 
+        // validate peer chain. invalid chain is never adopted.
         auto result = Blockchain::ValidateChain(peerChain);
         if (!result.valid) {
           cerr << "p2p rejected chain from " << PeerName(fd)
@@ -283,9 +282,43 @@ void P2PServer::ProcessFrame(int fd, const string& frame, vector<Block>& pending
           break;
         }
 
-        // placeholder to deal with forks
+        // validate local chain
         auto local = Chain.Snapshot();
-        if (peerChain.size() <= local.size()) { break; }
+        auto localResult = Blockchain::ValidateChain(local);
+        if(!localResult.valid) {
+          cerr << "p2p local chain invalid (block #" << localResult.failedIndex
+               << ": " << localResult.reason << "). adopting peer chain from "
+               << PeerName(fd) << "\n";
+          if (Chain.ReplaceChain(std::move(peerChain))) {
+            cout << "p2p adopted chain from " << PeerName(fd)
+                 << ": now " << Chain.Snapshot().size() << " blocks\n";
+          }
+          break;
+        }
+
+        // both valid. adopt longest chain
+        // peer shorter
+        if (peerChain.size() < local.size()) { break; }
+        // tie in length
+        if (peerChain.size() == local.size()) {
+          // same length + same tip. already fully synced, done.
+          if (peerChain.back().GetHash() == local.back().GetHash()) { break; }
+
+          // same length + different tip
+          cout << "p2p tie (" << local.size() << " blocks each, different tips) from "
+               << PeerName(fd) << ". keeping local\n";
+          break;
+        }
+        // locate point of fork
+        size_t forkPoint = 0;
+        while (forkPoint < local.size() &&
+               forkPoint < peerChain.size() &&
+               local[forkPoint].GetHash() == peerChain[forkPoint].GetHash())
+        { ++forkPoint; }
+        // peer longer
+        for (size_t i = forkPoint; i < local.size(); ++i) {
+          cout << "p2p orphaning local block #" << local[i].GetIndex() << endl;
+        }
         if (Chain.ReplaceChain(std::move(peerChain))) {
           cout << "p2p adopted chain from " << PeerName(fd)
                << ": now " << Chain.Snapshot().size() << " blocks\n";
