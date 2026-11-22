@@ -24,6 +24,9 @@ class P2PServer {
     void BroadcastNewBlock(const Block& block);
     void BroadcastMissingBlocksRequest();
 
+    // snapshot of connected peers
+    std::vector<std::pair<int, std::string>> PeerList();
+
   private:
     Blockchain& Chain;
     uint16_t ListenPort;

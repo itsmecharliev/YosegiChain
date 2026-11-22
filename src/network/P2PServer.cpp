@@ -336,3 +336,16 @@ void P2PServer::ProcessFrame(int fd, const string& frame, vector<Block>& pending
         << ": " << e.what() << "\n";
   }
 }
+
+// snapshot of connected peers
+std::vector<std::pair<int, std::string>> P2PServer::PeerList() {
+  lock_guard<mutex> lock(PeersMutex);
+  std::vector<std::pair<int, std::string>> out;
+  out.reserve(Peers.size());
+ 
+  for (const auto& [fd, addr] : Peers) {
+    out.push_back({fd, addr});
+  }
+
+  return out;
+}
